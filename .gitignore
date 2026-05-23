@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.db
+instance/
+.env
+static/qr_codes/
+static/pc_qr_codes/
+venv/
