@@ -60,7 +60,10 @@ def handle_join(data):
     print(f"✅ Web client joined room: {token}")
 
 # === DATABASE CONFIGURATION ===
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
+    'DATABASE_URL',
+    'sqlite:///database.db'
+).replace("postgres://", "postgresql://")  # ← Render uses old format
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
