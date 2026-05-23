@@ -29,7 +29,7 @@ CORS(app,
 socketio = SocketIO(
     app,
     cors_allowed_origins=ALLOWED_ORIGINS,
-    async_mode="threading",
+    async_mode="gevent",
     allow_upgrades=False
 )
 
