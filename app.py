@@ -63,16 +63,6 @@ def handle_join(data):
     print(f"✅ Web client joined room: {token}")
 
 
-@app.after_request
-def after_request(response):
-    origin = request.headers.get("Origin")
-    if origin in ALLOWED_ORIGINS:
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, ngrok-skip-browser-warning"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-    return response
-
 # === DATABASE CONFIGURATION ===
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
     'DATABASE_URL',
@@ -175,6 +165,17 @@ def cleanup_old_attendance():
     db.session.commit()
 
 # === ROUTES ===
+
+@app.after_request
+def after_request(response):
+    origin = request.headers.get("Origin")
+    if origin in ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, ngrok-skip-browser-warning"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
+
 
 @app.route("/debug/pcs")
 def debug_pcs():
