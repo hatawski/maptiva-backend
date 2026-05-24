@@ -20,7 +20,7 @@ app = Flask(__name__, static_folder="static")
 ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "https://maptiva-frontend.netlify.app"
-    "https://alejandra-uncognisable-undescriptively.ngrok-free.dev"
+    "https://maptiva-backend.onrender.com"
 ]
 
 CORS(app,
