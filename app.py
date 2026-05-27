@@ -179,7 +179,7 @@ def after_request(response):
 
 @app.route("/debug/pcs")
 def debug_pcs():
-    pcs = PC.query.all()
+    pcs = PC.query.order_by(PC.pc_name.asc()).all()
     return jsonify([pc.pc_name for pc in pcs])
 
 # === STUDENT SIGNUP ===
