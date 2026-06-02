@@ -20,6 +20,7 @@ app = Flask(__name__, static_folder="static")
 ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "https://maptivanalang.netlify.app",
+    "http://50.0.14.185:3000",
     
 ]
 
