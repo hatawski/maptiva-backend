@@ -380,7 +380,7 @@ def admin_login():
 # === ADMIN VIEW PCS ===
 @app.route("/admin/pcs", methods=["GET"])
 def admin_view_pcs():
-    pcs = PC.query.all()
+    pcs = PC.query.order_by(PC.pc_name.asc()).all()
     data = []
     for pc in pcs:
         student = None
