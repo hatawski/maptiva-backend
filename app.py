@@ -20,7 +20,7 @@ app = Flask(__name__, static_folder="static")
 ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "https://maptivanalang.netlify.app",
-    "http://50.0.14.185:3000",
+    "http://50.0.14.185:3000"
     
 ]
 
@@ -620,5 +620,6 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=5000,
         debug=False,
-        use_reloader=False
+        use_reloader=False,
+        allow_unsafe_werkzeug=True
     )
