@@ -18,8 +18,6 @@ def now_pht():
 app = Flask(__name__, static_folder="static")
 
 ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "https://maptivanalang.netlify.app",
     "http://50.0.14.185:3000",
     "*",
     
@@ -173,9 +171,15 @@ def after_request(response):
     origin = request.headers.get("Origin")
     if origin in ALLOWED_ORIGINS:
         response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, ngrok-skip-browser-warning"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
         response.headers["Access-Control-Allow-Credentials"] = "true"
+    elif origin is None:
+        response.headers["Access-Control-Allow-Origin"] = "*"
+    else:
+        response.headers["Access-Control-Allow-Origin"] = "http://50.0.14.185:3000"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, ngrok-skip-browser-warning"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
     return response
 
 
