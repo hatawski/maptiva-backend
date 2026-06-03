@@ -135,7 +135,7 @@ with app.app_context():
         admin = Admin(username="admin", password="1234")
         db.session.add(admin)
     if PC.query.count() == 0:
-        for i in range(1, 21):
+        for i in range(1, 31):
             pc = PC(pc_name=f"PC{i:02d}")
             db.session.add(pc)
     db.session.commit()
