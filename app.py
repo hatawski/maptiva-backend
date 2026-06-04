@@ -21,6 +21,7 @@ ALLOWED_ORIGINS = [
     "http://50.0.14.185:3000",
     "https://alejandra-uncognisable-undescriptively.ngrok-free.dev",
     "https://maptiva.loca.lt",
+    "https://dry-parrot-34.loca.lt",
     "*"
     
 ]
