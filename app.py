@@ -19,7 +19,8 @@ app = Flask(__name__, static_folder="static")
 
 ALLOWED_ORIGINS = [
     "http://50.0.14.185:3000",
-    "*",
+    "https://alejandra-uncognisable-undescriptively.ngrok-free.dev",
+    "*"
     
 ]
 
@@ -169,15 +170,13 @@ def cleanup_old_attendance():
 @app.after_request
 def after_request(response):
     origin = request.headers.get("Origin")
-    if origin in ALLOWED_ORIGINS:
+    # Dynamically allow the origin if it matches our ngrok domain
+    if origin and ("ngrok-free.dev" in origin or "50.0.14.185" in origin):
         response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-    elif origin is None:
-        response.headers["Access-Control-Allow-Origin"] = "*"
     else:
-        response.headers["Access-Control-Allow-Origin"] = "http://50.0.14.185:3000"
-        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Origin"] = "*"
         
+    response.headers["Access-Control-Allow-Credentials"] = "true"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, ngrok-skip-browser-warning"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
     return response
