@@ -20,6 +20,7 @@ app = Flask(__name__, static_folder="static")
 ALLOWED_ORIGINS = [
     "http://50.0.14.185:3000",
     "https://alejandra-uncognisable-undescriptively.ngrok-free.dev",
+    "https://maptiva.loca.lt",
     "*"
     
 ]
@@ -177,7 +178,7 @@ def after_request(response):
         response.headers["Access-Control-Allow-Origin"] = "*"
         
     response.headers["Access-Control-Allow-Credentials"] = "true"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, ngrok-skip-browser-warning"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, ngrok-skip-browser-warning, Bypass-Tunnel-Reminder"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
     return response
 
