@@ -1,3 +1,8 @@
+import sys
+import psycopg
+# Trick older extensions into using the new psycopg v3 engine seamlessly
+sys.modules['psycopg2'] = psycopg
+
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
