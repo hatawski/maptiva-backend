@@ -20,8 +20,7 @@ app = Flask(__name__, static_folder="static")
 ALLOWED_ORIGINS = [
     "http://50.0.14.185:3000",
     "https://alejandra-uncognisable-undescriptively.ngrok-free.dev",
-    "https://maptiva.loca.lt",
-    "https://98f5f799a06b33d7-112-204-118-199.serveousercontent.com",
+    "https://pruning-announcer-unreeling.ngrok-free.dev",
     "*"
     
 ]
