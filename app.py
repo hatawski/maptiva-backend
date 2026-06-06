@@ -19,8 +19,6 @@ app = Flask(__name__, static_folder="static")
 
 ALLOWED_ORIGINS = [
     "http://50.0.14.185:3000",
-    "https://alejandra-uncognisable-undescriptively.ngrok-free.dev",
-    "https://pruning-announcer-unreeling.ngrok-free.dev",
     "*"
     
 ]
@@ -171,11 +169,13 @@ def cleanup_old_attendance():
 @app.after_request
 def after_request(response):
     origin = request.headers.get("Origin")
-    # Dynamically allow the origin if it matches our ngrok domain
-    if origin and ("ngrok-free.dev" in origin or "50.0.14.185" in origin):
+    
+    # ✅ DYNAMIC CLOUDFLARE FIX: Dynamically trust your changing tunnels
+    if origin and ("trycloudflare.com" in origin or "ngrok-free.dev" in origin or "50.0.14.185" in origin):
         response.headers["Access-Control-Allow-Origin"] = origin
     else:
-        response.headers["Access-Control-Allow-Origin"] = "*"
+        # If there's no origin header (like basic mobile app fetches), fallback safely
+        response.headers["Access-Control-Allow-Origin"] = origin if origin else "*"
         
     response.headers["Access-Control-Allow-Credentials"] = "true"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, ngrok-skip-browser-warning, Bypass-Tunnel-Reminder"
