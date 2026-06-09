@@ -2,10 +2,9 @@ from flask import Flask, request, jsonify, send_file, make_response
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from datetime import datetime, timedelta, timezone
-from . import Attendance
-from . import db, create_app, Attendance, Student, PC, Admin
 import qrcode
 import os
+import io
 import pandas as pd
 from pathlib import Path
 import uuid
@@ -520,21 +519,27 @@ def admin_force_checkout():
 @app.route('/admin/export-attendance', methods=['GET'])
 def export_attendance():
     try:
-        # 1. Fetch data from your SQLite database via SQLAlchemy
-        records = Attendance.query.all()
+        # 1. Fetch data from your actual database table via SQLAlchemy
+        records = Reservation.query.all()
         
         if not records:
             return make_response({"message": "No records found"}, 400)
 
-        # 2. Map data into a structured array
-        data = [{
-            "Name": r.name,
-            "Student ID": r.student_id,
-            "PC Assigned": r.pc_name,
-            "Time In": r.time_in,
-            "Time Out": r.time_out,
-            "Status": r.status
-        } for r in records]
+        # 2. Map data out using structural relationships
+        data = []
+        for r in records:
+            # Look up student data dynamically using foreign key reference
+            student_obj = Student.query.get(r.student_id)
+            pc_obj = PC.query.get(r.pc_id)
+            
+            data.append({
+                "Name": student_obj.name if student_obj else "Unknown Student",
+                "Student ID": student_obj.student_id if student_obj else "N/A",
+                "PC Assigned": pc_obj.pc_name if pc_obj else "Unknown PC",
+                "Time In": r.checked_in_at.strftime("%Y-%m-%d %I:%M %p") if r.checked_in_at else "N/A",
+                "Time Out": r.checked_out_at.strftime("%Y-%m-%d %I:%M %p") if r.checked_out_at else "Still Active",
+                "Status": r.status
+            })
 
         # 3. Use Pandas to build a genuine data dataframe
         df = pd.DataFrame(data)
