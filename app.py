@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from datetime import datetime, timedelta, timezone
 from models import Attendance
+from . import db, create_app, Attendance, Student, PC, Admin
 import qrcode
 import os
 import pandas as pd
