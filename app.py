@@ -516,16 +516,53 @@ def admin_force_checkout():
     }), 200
 
 # === ADMIN ATTENDANCE ===
+@app.route('/admin/attendance', methods=['GET'])
+def admin_view_attendance():
+    """
+    1. Returns raw data as JSON to populate your React Web UI Table.
+    Matches the property keys expected by AdminPanel.js (name, student_id, pc_name).
+    """
+    try:
+        # Fetch history records from your SQLite database
+        records = Reservation.query.all()
+        
+        data = []
+        for r in records:
+            # Dynamically pull mapped objects via foreign key references
+            student_obj = Student.query.get(r.student_id)
+            pc_obj = PC.query.get(r.pc_id)
+            
+            data.append({
+                "id": r.id,
+                "name": student_obj.name if student_obj else "Unknown Student",
+                "student_id": student_obj.student_id if student_obj else "N/A",
+                "pc_name": pc_obj.pc_name if pc_obj else "Unknown PC",
+                "time_in": r.checked_in_at.strftime("%I:%M %p") if r.checked_in_at else "N/A",
+                "time_out": r.checked_out_at.strftime("%I:%M %p") if r.checked_out_at else "Still Active",
+                "status": r.status
+            })
+            
+        return jsonify(data), 200
+
+    except Exception as e:
+        print(f"Fetch Attendance List Error: {e}")
+        return jsonify({"message": "Server error fetching logs"}), 500
+
+
 @app.route('/admin/export-attendance', methods=['GET'])
 def export_attendance():
+    """
+    2. Compiles a native OpenXML spreadsheet binary stream for Excel Cloud.
+    Uses proper capital column casings for clean spreadsheet document representation.
+    """
     try:
-        # 1. Fetch data from your actual database table via SQLAlchemy
+        # Fetch data from your actual database table via SQLAlchemy
         records = Reservation.query.all()
         
         if not records:
             return make_response({"message": "No records found"}, 400)
 
-        # 2. Map data out using structural relationships
+        # Map data out using structural relationships
         data = []
         for r in records:
             # Look up student data dynamically using foreign key reference
@@ -541,16 +578,16 @@ def export_attendance():
                 "Status": r.status
             })
 
-        # 3. Use Pandas to build a genuine data dataframe
+        # Use Pandas to build a genuine data dataframe
         df = pd.DataFrame(data)
 
-        # 4. Write it directly into a binary stream memory buffer
+        # Write it directly into a binary stream memory buffer
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='Attendance Logs')
         output.seek(0)
 
-        # 5. Send the native binary stream straight to the browser
+        # Send the native binary stream straight to the browser
         return send_file(
             output,
             mimetype="application/vnd.open-xmlformats-officedocument.spreadsheetml.sheet",

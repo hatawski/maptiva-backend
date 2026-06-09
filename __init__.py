@@ -41,6 +41,8 @@ def create_app():
 
     db.init_app(app)
 
+    from ..Frontend.src.pages.models import Student, Admin, PC, Reservation
+
     with app.app_context():
         db.create_all()
         # Create a default admin account if it's a completely new database
