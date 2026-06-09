@@ -2,8 +2,6 @@ from flask import Flask, request, jsonify, send_file, make_response
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from datetime import datetime, timedelta, timezone
-from models import Attendance
-from . import db, create_app, Attendance, Student, PC, Admin
 import qrcode
 import os
 import pandas as pd
@@ -517,45 +515,57 @@ def admin_force_checkout():
     }), 200
 
 # === ADMIN ATTENDANCE ===
-@app.route('/admin/export-attendance', methods=['GET'])
+@app.route("/admin/attendance", methods=["GET"])
+def get_attendance():
+    reservations = Reservation.query.order_by(
+        Reservation.checked_in_at.desc()
+    ).all()
+    data = []
+    for r in reservations:
+        student = Student.query.get(r.student_id)
+        pc = PC.query.get(r.pc_id)
+        data.append({
+            "name": student.name if student else "Unknown",
+            "student_id": student.student_id if student else "Unknown",
+            "pc_name": pc.pc_name if pc else "Unknown",
+            "time_in": r.checked_in_at.strftime("%Y-%m-%d %I:%M %p") if r.checked_in_at else "",
+            "time_out": r.checked_out_at.strftime("%Y-%m-%d %I:%M %p") if r.checked_out_at else "Still in",
+            "status": r.status
+        })
+    return jsonify(data), 200
+
+# === EXPORT ATTENDANCE ===
+@app.route("/admin/export-attendance", methods=["GET"])
 def export_attendance():
-    try:
-        # 1. Fetch data from your SQLite database via SQLAlchemy
-        records = Attendance.query.all()
-        
-        if not records:
-            return make_response({"message": "No records found"}, 400)
+    documents_path = Path.home() / "Documents" / "Attendance_Logs"
+    documents_path.mkdir(parents=True, exist_ok=True)
 
-        # 2. Map data into a structured array
-        data = [{
-            "Name": r.name,
-            "Student ID": r.student_id,
-            "PC Assigned": r.pc_name,
-            "Time In": r.time_in,
-            "Time Out": r.time_out,
+    reservations = Reservation.query.all()
+    data = []
+    for r in reservations:
+        student = Student.query.get(r.student_id)
+        pc = PC.query.get(r.pc_id)
+        data.append({
+            "Name": student.name if student else "Unknown",
+            "Student ID": student.student_id if student else "Unknown",
+            "PC Name": pc.pc_name if pc else "Unknown",
+            "Time In": r.checked_in_at.strftime("%Y-%m-%d %H:%M:%S") if r.checked_in_at else "",
+            "Time Out": r.checked_out_at.strftime("%Y-%m-%d %H:%M:%S") if r.checked_out_at else "",
             "Status": r.status
-        } for r in records]
+        })
 
-        # 3. Use Pandas to build a genuine data dataframe
-        df = pd.DataFrame(data)
+    if not data:
+        return jsonify({"message": "No attendance records to export"}), 404
 
-        # 4. Write it directly into a binary stream memory buffer
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Attendance Logs')
-        output.seek(0)
+    df = pd.DataFrame(data)
+    filename = f"attendance_log_{now_pht().strftime('%Y-%m-%d_%H-%M-%S')}.xlsx"
+    filepath = documents_path / filename
+    df.to_excel(filepath, index=False)
 
-        # 5. Send the native binary stream straight to the browser
-        return send_file(
-            output,
-            mimetype="application/vnd.open-xmlformats-officedocument.spreadsheetml.sheet",
-            as_attachment=True,
-            download_name="Maptiva_Attendance.xlsx"
-        )
-
-    except Exception as e:
-        print(f"Export Error: {e}")
-        return make_response({"message": "Server error generating file"}, 500)
+    return jsonify({
+        "message": "Attendance log exported successfully",
+        "file_path": str(filepath)
+    }), 200
 
 # === QR TOKEN MANAGEMENT ===
 active_qr_tokens = {}
