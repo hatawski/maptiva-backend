@@ -553,7 +553,7 @@ def admin_view_attendance():
 def export_attendance():
     """
     2. Compiles a native OpenXML spreadsheet binary stream for Excel Cloud.
-    Uses proper capital column casings for clean spreadsheet document representation.
+    Matches the exact column headers from the required layout screenshot.
     """
     try:
         # Fetch data from your actual database table via SQLAlchemy
@@ -572,9 +572,9 @@ def export_attendance():
             data.append({
                 "Name": student_obj.name if student_obj else "Unknown Student",
                 "Student ID": student_obj.student_id if student_obj else "N/A",
-                "PC Assigned": pc_obj.pc_name if pc_obj else "Unknown PC",
-                "Time In": r.checked_in_at.strftime("%Y-%m-%d %I:%M %p") if r.checked_in_at else "N/A",
-                "Time Out": r.checked_out_at.strftime("%Y-%m-%d %I:%M %p") if r.checked_out_at else "Still Active",
+                "PC Name": pc_obj.pc_name if pc_obj else "Unknown PC",  # ← FIXED: Matches your screenshot header exactly!
+                "Time In": r.checked_in_at.strftime("%Y-%m-%d %I:%M:%S") if r.checked_in_at else "N/A", # Shows full seconds like screenshot
+                "Time Out": r.checked_out_at.strftime("%Y-%m-%d %I:%M:%S") if r.checked_out_at else "", # Empty if still active
                 "Status": r.status
             })
 
