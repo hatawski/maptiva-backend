@@ -21,6 +21,7 @@ app = Flask(__name__, static_folder="static")
 ALLOWED_ORIGINS = [
     "http://50.0.14.185:3000",
     "*"
+    
 ]
 
 CORS(app,
@@ -33,6 +34,8 @@ socketio = SocketIO(
     async_mode="threading",
     allow_upgrades=False
 )
+
+
 
 @socketio.on("join_pc")
 def handle_pc_join(data):
@@ -190,22 +193,13 @@ def debug_pcs():
 @app.route("/signup", methods=["POST"])
 def signup():
     data = request.json
-    
-    # ✅ BUGFIX: Sanitize input data to strip spaces completely
-    raw_student_id = data.get("student_id", "")
-    clean_student_id = str(raw_student_id).strip().replace(" ", "")
-    clean_name = str(data.get("name", "")).strip()
-
-    if not clean_student_id:
-        return jsonify({"message": "Student ID cannot be empty"}), 400
-
-    existing_student = Student.query.filter_by(student_id=clean_student_id).first()
+    existing_student = Student.query.filter_by(student_id=data["student_id"]).first()
     if existing_student:
         return jsonify({"message": "Student ID already exists"}), 400
 
     student = Student(
-        name=clean_name,
-        student_id=clean_student_id,
+        name=data["name"],
+        student_id=data["student_id"],
         password=data["password"]
     )
     db.session.add(student)
@@ -232,12 +226,8 @@ def signup():
 @app.route("/login", methods=["POST"])
 def login():
     data = request.json
-    
-    # ✅ BUGFIX: Sanitize login ID input to drop accidental spaces
-    clean_student_id = str(data.get("student_id", "")).strip().replace(" ", "")
-
     student = Student.query.filter_by(
-        student_id=clean_student_id,
+        student_id=data["student_id"],
         password=data["password"]
     ).first()
 
@@ -266,13 +256,8 @@ def login():
 def reserve_pc():
     cleanup_old_attendance()
     data = request.json
-    input_student_id = data["student_id"]
+    student_id = data["student_id"]
     pc_name = data["pc_name"]
-
-    # ✅ BUGFIX: Resolve student string ID to internal SQLite primary integer key
-    student = Student.query.filter_by(student_id=str(input_student_id).strip().replace(" ", "")).first()
-    if not student:
-        return jsonify({"message": "Student not found"}), 404
 
     pc = PC.query.filter_by(pc_name=pc_name).first()
     if not pc:
@@ -281,10 +266,9 @@ def reserve_pc():
         return jsonify({"message": "PC already reserved"}), 400
 
     pc.status = "occupied"
-    pc.assigned_to = student.id  # ✅ Linked via internal Integer key
-    
+    pc.assigned_to = student_id
     reservation = Reservation(
-        student_id=student.id,   # ✅ Linked via internal Integer key
+        student_id=student_id,
         pc_id=pc.id,
         checked_in_at=now_pht(),
         status="confirmed"
@@ -292,8 +276,7 @@ def reserve_pc():
     db.session.add(reservation)
     db.session.commit()
 
-    # Emit using raw target input string back out to frontend listeners
-    socketio.emit("pc_unlocked", {"pc_name": pc_name}, room=f"student_{input_student_id}")
+    socketio.emit("pc_unlocked", {"pc_name": pc_name}, room=f"student_{student_id}")
 
     return jsonify({
         "message": f"{pc_name} reserved successfully",
@@ -318,15 +301,7 @@ def get_student_reservation(student_id):
 def checkout():
     data = request.json
     student_id = data["student_id"]
-    
-    # Support lookup via either absolute database row int or literal school ID text
-    if isinstance(student_id, str):
-        student = Student.query.filter_by(student_id=student_id.strip().replace(" ", "")).first()
-        resolved_id = student.id if student else None
-    else:
-        resolved_id = student_id
-
-    pc = PC.query.filter_by(assigned_to=resolved_id).first()
+    pc = PC.query.filter_by(assigned_to=student_id).first()
     if not pc:
         return jsonify({"message": "No active reservation found"}), 404
 
@@ -334,6 +309,7 @@ def checkout():
     if reservation:
         reservation.status = "checked_out"
         reservation.checked_out_at = now_pht()
+        db.session.commit()
 
     pc.status = "available"
     pc.assigned_to = None
@@ -354,11 +330,11 @@ def report_issue():
     if not message:
         return jsonify({"message": "Message is required"}), 400
 
-    # Handle string, integer, or null student_id
+    # ✅ Handle string, integer, or null student_id
     if student_id is None:
         report = Report(student_id=None, message=message)
     elif isinstance(student_id, str):
-        student = Student.query.filter_by(student_id=student_id.strip().replace(" ", "")).first()
+        student = Student.query.filter_by(student_id=student_id).first()
         report = Report(
             student_id=student.id if student else None,
             message=message
@@ -381,7 +357,7 @@ def request_permission():
         return jsonify({"message": "Missing student_id or pc_name"}), 400
 
     if isinstance(student_id, str):
-        student = Student.query.filter_by(student_id=student_id.strip().replace(" ", "")).first()
+        student = Student.query.filter_by(student_id=student_id).first()
         if not student:
             return jsonify({"message": "Student not found"}), 404
         student_id = student.id
@@ -416,8 +392,7 @@ def admin_view_pcs():
         student = None
         if pc.assigned_to:
             s = Student.query.get(pc.assigned_to)
-            if s:
-                student = {"name": s.name, "student_id": s.student_id}
+            student = {"name": s.name, "student_id": s.student_id}
         data.append({
             "id": pc.id,
             "pc_name": pc.pc_name,
@@ -485,25 +460,22 @@ def handle_permission():
             db.session.add(reservation)
             db.session.commit()
 
-        s = Student.query.get(req.student_id)
-        target_sid = s.student_id if s else req.student_id
-
         socketio.emit(
             "pc_unlocked",
             {
-                "pc_name": pc.pc_name if pc else "Unknown",
+                "pc_name": pc.pc_name,
                 "checked_in_at": now_pht().strftime("%I:%M %p")
             },
-            room=f"student_{target_sid}"
+            room=f"student_{req.student_id}"
         )
 
         socketio.emit(
             "pc_unlocked_mobile",
             {
-                "pc_name": pc.pc_name if pc else "Unknown",
+                "pc_name": pc.pc_name,
                 "checked_in_at": now_pht().strftime("%I:%M %p")
             },
-            room=f"mobile_{target_sid}"
+            room=f"mobile_{req.student_id}"
         )
 
     return jsonify({"message": f"Request {data['action']}"}), 200
@@ -521,7 +493,7 @@ def admin_force_checkout():
     if pc.status == "available":
         return jsonify({"message": "PC is already available"}), 400
 
-    student_db_id = pc.assigned_to 
+    student_id = pc.assigned_to  # ✅ save before clearing
 
     reservation = Reservation.query.filter_by(
         pc_id=pc.id, status="confirmed"
@@ -534,17 +506,16 @@ def admin_force_checkout():
     pc.assigned_to = None
     db.session.commit()
 
-    if student_db_id:
-        s = Student.query.get(student_db_id)
-        target_sid = s.student_id if s else student_db_id
-        socketio.emit("pc_locked", {}, room=f"student_{target_sid}")
-        socketio.emit("pc_locked", {}, room=f"mobile_{target_sid}")
+    # ✅ Notify both web and mobile
+    if student_id:
+        socketio.emit("pc_locked", {}, room=f"student_{student_id}")
+        socketio.emit("pc_locked", {}, room=f"mobile_{student_id}")
 
     return jsonify({
         "message": f"{pc_name} has been forcefully checked out by admin."
     }), 200
 
-# === ADMIN ATTENDANCE WEB LIST ===
+# === ADMIN ATTENDANCE ===
 @app.route('/admin/attendance', methods=['GET'])
 def admin_view_attendance():
     """
@@ -552,9 +523,12 @@ def admin_view_attendance():
     Matches the property keys expected by AdminPanel.js (name, student_id, pc_name).
     """
     try:
+        # Fetch history records from your SQLite database
         records = Reservation.query.all()
+        
         data = []
         for r in records:
+            # Dynamically pull mapped objects via foreign key references
             student_obj = Student.query.get(r.student_id)
             pc_obj = PC.query.get(r.pc_id)
             
@@ -574,7 +548,7 @@ def admin_view_attendance():
         print(f"Fetch Attendance List Error: {e}")
         return jsonify({"message": "Server error fetching logs"}), 500
 
-# === ADMIN EXPORT EXCEL ROUTE ===
+
 @app.route('/admin/export-attendance', methods=['GET'])
 def export_attendance():
     """
@@ -582,36 +556,43 @@ def export_attendance():
     Matches the exact column headers from the required layout screenshot.
     """
     try:
+        # Fetch data from your actual database table via SQLAlchemy
         records = Reservation.query.all()
         
         if not records:
             return make_response({"message": "No records found"}, 400)
 
+        # Map data out using structural relationships
         data = []
         for r in records:
+            # Look up student data dynamically using foreign key reference
             student_obj = Student.query.get(r.student_id)
             pc_obj = PC.query.get(r.pc_id)
             
             data.append({
                 "Name": student_obj.name if student_obj else "Unknown Student",
                 "Student ID": student_obj.student_id if student_obj else "N/A",
-                "PC Name": pc_obj.pc_name if pc_obj else "Unknown PC",  
-                "Time In": r.checked_in_at.strftime("%Y-%m-%d %I:%M:%S") if r.checked_in_at else "N/A", 
-                "Time Out": r.checked_out_at.strftime("%Y-%m-%d %I:%M:%S") if r.checked_out_at else "", 
+                "PC Name": pc_obj.pc_name if pc_obj else "Unknown PC",  # ← FIXED: Matches your screenshot header exactly!
+                "Time In": r.checked_in_at.strftime("%Y-%m-%d %I:%M:%S") if r.checked_in_at else "N/A", # Shows full seconds like screenshot
+                "Time Out": r.checked_out_at.strftime("%Y-%m-%d %I:%M:%S") if r.checked_out_at else "", # Empty if still active
                 "Status": r.status
             })
 
+        # Use Pandas to build a genuine data dataframe
         df = pd.DataFrame(data)
+
+        # Write it directly into a binary stream memory buffer
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='Attendance Logs')
         output.seek(0)
 
+        # Send the native binary stream straight to the browser
         return send_file(
             output,
             mimetype="application/vnd.open-xmlformats-officedocument.spreadsheetml.sheet",
             as_attachment=True,
-            download_name="Attendance.xlsx"
+            download_name="Maptiva_Attendance.xlsx"
         )
 
     except Exception as e:
@@ -624,21 +605,10 @@ token_lock = Lock()
 
 @app.route("/qr-token", methods=["GET"])
 def qr_token():
-    # ✅ FIX: Grab the student ID of the person currently logged into the web app
-    web_student_id = request.args.get("student_id")
-    if web_student_id:
-        web_student_id = str(web_student_id).strip().replace(" ", "")
-
     token = str(uuid.uuid4())
     expires_at = now_pht() + timedelta(minutes=2)
-    
     with token_lock:
-        # Save the web owner's ID inside the token metadata map
-        active_qr_tokens[token] = {
-            "expires_at": expires_at,
-            "web_student_id": web_student_id  # Tracks who owns this web screen
-        }
-        
+        active_qr_tokens[token] = {"expires_at": expires_at}
     return jsonify({
         "token": token,
         "expires_at": expires_at.isoformat()
@@ -648,35 +618,23 @@ def qr_token():
 def qr_login():
     data = request.json
     token = data.get("token")
-    mobile_student_id = data.get("student_id")
+    student_id = data.get("student_id")
 
-    if not token or not mobile_student_id:
+    if not token or not student_id:
         return jsonify({"message": "Missing token or student_id"}), 400
-
-    # Sanitize the scanner's ID
-    mobile_student_id = str(mobile_student_id).strip().replace(" ", "")
 
     with token_lock:
         token_data = active_qr_tokens.get(token)
         if not token_data:
             return jsonify({"message": "Invalid or expired token"}), 404
-            
         if now_pht() > token_data["expires_at"]:
             del active_qr_tokens[token]
             return jsonify({"message": "Token expired"}), 410
 
-        # ✅ SECURITY ENFORCEMENT: Check if the scanning mobile matches the web screen owner
-        expected_web_id = token_data.get("web_student_id")
-        if expected_web_id and mobile_student_id != expected_web_id:
-            return jsonify({
-                "message": "Security Error: This QR code belongs to a different student session!"
-            }), 403  # Forbidden
-
-    student = Student.query.filter_by(student_id=mobile_student_id).first()
+    student = Student.query.filter_by(student_id=student_id).first()
     if not student:
         return jsonify({"message": "Student not found"}), 404
 
-    # If security check passes, authorize the WebSocket to unlock the station
     socketio.emit(
         "qr_authorized",
         {
