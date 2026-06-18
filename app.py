@@ -73,10 +73,12 @@ def handle_join(data):
     print(f"✅ Web client joined room: {token}")
 
 # === DATABASE CONFIGURATION ===
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
     'DATABASE_URL',
-    'sqlite:///database.db'
-).replace("postgres://", "postgresql://")  # ← Render uses old format
+    f'sqlite:///{os.path.join(BASE_DIR, "database.db")}' # ◄ Forces it into /opt/maptiva-backend/database.db
+).replace("postgres://", "postgresql://")
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
@@ -613,7 +615,7 @@ def export_attendance():
     try:
         records = Reservation.query.all()
         if not records:
-            return make_response({"message": "No records found"}, 400)
+            return jsonify({"message": "No records found"}), 400
 
         data = []
         for r in records:
@@ -637,13 +639,13 @@ def export_attendance():
 
         return send_file(
             output,
-            mimetype="application/vnd.open-xmlformats-officedocument.spreadsheetml.sheet",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", # ◄ Corrected MIME type (no hyphen)
             as_attachment=True,
             download_name="Attendance.xlsx"
         )
     except Exception as e:
-        print(f"Export Error: {e}")
-        return make_response({"message": "Server error generating file"}, 500)
+        print(f"Export Error Traceback: {e}")
+        return jsonify({"message": "Server error generating file"}), 500
 
 # === QR TOKEN MANAGEMENT ===
 active_qr_tokens = {}
