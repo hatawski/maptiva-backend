@@ -651,12 +651,27 @@ def export_attendance():
 active_qr_tokens = {}
 token_lock = Lock()
 
-@app.route("/qr-token", methods=["GET"])
+# === QR TOKEN MANAGEMENT WITH IDENTITY LOCKING ===
+active_qr_tokens = {}
+token_lock = Lock()
+
+@app.route("/qr-token", methods=["POST"]) # ◄ Changed to POST to accept data safely
 def qr_token():
+    data = request.json or {}
+    student_id = data.get("student_id") # ◄ Track who owns this screen
+
+    if not student_id:
+        return jsonify({"message": "Student ID is required to secure the token"}), 400
+
     token = str(uuid.uuid4())
     expires_at = now_pht() + timedelta(minutes=2)
+    
     with token_lock:
-        active_qr_tokens[token] = {"expires_at": expires_at}
+        active_qr_tokens[token] = {
+            "expires_at": expires_at,
+            "owner_id": str(student_id) # ◄ Explicitly lock the token to this user
+        }
+        
     return jsonify({
         "token": token,
         "expires_at": expires_at.isoformat()
@@ -664,22 +679,33 @@ def qr_token():
 
 @app.route("/qr-login", methods=["POST"])
 def qr_login():
-    data = request.json
+    data = request.json or {}
     token = data.get("token")
-    student_id = data.get("student_id")
+    scanning_student_id = data.get("student_id") # The student ID from the mobile scanner
 
-    if not token or not student_id:
+    if not token or not scanning_student_id:
         return jsonify({"message": "Missing token or student_id"}), 400
 
     with token_lock:
         token_data = active_qr_tokens.get(token)
+        
+        # 1. Check if token even exists
         if not token_data:
             return jsonify({"message": "Invalid or expired token"}), 404
+            
+        # 2. Check if token time has run out
         if now_pht() > token_data["expires_at"]:
             del active_qr_tokens[token]
             return jsonify({"message": "Token expired"}), 410
 
-    student = Student.query.filter_by(student_id=student_id).first()
+        # 3. ANTI-STEALING SHIELD: Verify scanner matches the web session owner
+        if token_data["owner_id"] != str(scanning_student_id):
+            return jsonify({
+                "message": "Security Error: This QR code belongs to another account!"
+            }), 403 # ◄ Rejects malicious or accidental cross-scans immediately
+
+    # If it passes security, fetch student to authorize web socket push
+    student = Student.query.filter_by(student_id=scanning_student_id).first()
     if not student:
         return jsonify({"message": "Student not found"}), 404
 
@@ -693,11 +719,12 @@ def qr_login():
         room=token
     )
 
+    # 4. Burn the token instantly so it can never be processed a second time
     with token_lock:
         if token in active_qr_tokens:
             del active_qr_tokens[token]
 
-    return jsonify({"message": "QR login successful"}), 200
+    return jsonify({"message": "QR validation successful"}), 200
 
 if __name__ == "__main__":
     socketio.run(
