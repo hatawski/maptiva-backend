@@ -4,8 +4,6 @@ from flask_cors import CORS
 from flask_mail import Mail, Message 
 from datetime import datetime, timedelta, timezone
 import qrcode
-import secrets
-import time
 import os
 import io
 import pandas as pd
@@ -649,81 +647,39 @@ def export_attendance():
         print(f"Export Error Traceback: {e}")
         return jsonify({"message": "Server error generating file"}), 500
 
-# ==========================================
-# === QR TOKEN MANAGEMENT WITH IDENTITY LOCK ===
-# ==========================================
+# === QR TOKEN MANAGEMENT ===
 active_qr_tokens = {}
 token_lock = Lock()
 
-@app.route('/qr-token', methods=['GET', 'POST'])
-def handle_qr_token():
-    # 1️⃣ Generate a secure random token string
-    token = secrets.token_hex(16)
-    
-    # Use standard Unix timestamp tracking consistently
-    expires_at = time.time() + 120  # Token stays valid for 2 minutes (120 seconds)
-
-    # 2️⃣ Identify request context
-    if request.method == 'POST':
-        # --- SECURE CHECK-IN METHOD (From StudentDashboard) ---
-        data = request.get_json() or {}
-        student_id = data.get('student_id')
-
-        if not student_id:
-            return jsonify({"status": "error", "message": "Missing student_id for secure registration"}), 400
-
-        with token_lock:
-            # Save token into the globally visible active_qr_tokens tracking map
-            active_qr_tokens[token] = {
-                "expires_at": expires_at,
-                "student_id": str(student_id)
-            }
-        
-        return jsonify({"status": "success", "token": token}), 200
-
-    else:
-        # --- ANONYMOUS QUICK LOGIN METHOD (From StudentLogin) ---
-        # Save token with NO student binding (open context scanning)
-        with token_lock:
-            active_qr_tokens[token] = {
-                "expires_at": expires_at,
-                "student_id": None
-            }
-        
-        return jsonify({"status": "success", "token": token}), 200
-
+@app.route("/qr-token", methods=["GET"])
+def qr_token():
+    token = str(uuid.uuid4())
+    expires_at = now_pht() + timedelta(minutes=2)
+    with token_lock:
+        active_qr_tokens[token] = {"expires_at": expires_at}
+    return jsonify({
+        "token": token,
+        "expires_at": expires_at.isoformat()
+    }), 200
 
 @app.route("/qr-login", methods=["POST"])
 def qr_login():
-    data = request.json or {}
+    data = request.json
     token = data.get("token")
-    scanning_student_id = data.get("student_id") # The student ID from the mobile scanner
+    student_id = data.get("student_id")
 
-    if not token or not scanning_student_id:
+    if not token or not student_id:
         return jsonify({"message": "Missing token or student_id"}), 400
-
-    current_time = time.time()
 
     with token_lock:
         token_data = active_qr_tokens.get(token)
-        
-        # 1. Check if token even exists
         if not token_data:
             return jsonify({"message": "Invalid or expired token"}), 404
-            
-        # 2. Check if token time has run out (both now use uniform Unix timestamps)
-        if current_time > token_data["expires_at"]:
+        if now_pht() > token_data["expires_at"]:
             del active_qr_tokens[token]
             return jsonify({"message": "Token expired"}), 410
 
-        # 3. ANTI-STEALING SHIELD: Verify scanner matches if it's an identity-locked check-in token
-        if token_data["student_id"] is not None and token_data["student_id"] != str(scanning_student_id):
-            return jsonify({
-                "message": "Security Error: This QR code belongs to another account!"
-            }), 403 
-
-    # If it passes security validation, fetch student data to authorize web socket push
-    student = Student.query.filter_by(student_id=scanning_student_id).first()
+    student = Student.query.filter_by(student_id=student_id).first()
     if not student:
         return jsonify({"message": "Student not found"}), 404
 
@@ -737,12 +693,11 @@ def qr_login():
         room=token
     )
 
-    # 4. Burn the token instantly so it can never be intercepted or replayed
     with token_lock:
         if token in active_qr_tokens:
             del active_qr_tokens[token]
 
-    return jsonify({"message": "QR validation successful"}), 200
+    return jsonify({"message": "QR login successful"}), 200
 
 if __name__ == "__main__":
     socketio.run(
@@ -750,5 +705,6 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=5000,
         debug=False,
-        log_output=True
+        use_reloader=False,
+        allow_unsafe_werkzeug=True
     )
