@@ -649,11 +649,9 @@ def export_attendance():
         print(f"Export Error Traceback: {e}")
         return jsonify({"message": "Server error generating file"}), 500
 
-# === QR TOKEN MANAGEMENT ===
-active_qr_tokens = {}
-token_lock = Lock()
-
-# === QR TOKEN MANAGEMENT WITH IDENTITY LOCKING ===
+# ==========================================
+# === QR TOKEN MANAGEMENT WITH IDENTITY LOCK ===
+# ==========================================
 active_qr_tokens = {}
 token_lock = Lock()
 
@@ -661,6 +659,8 @@ token_lock = Lock()
 def handle_qr_token():
     # 1️⃣ Generate a secure random token string
     token = secrets.token_hex(16)
+    
+    # Use standard Unix timestamp tracking consistently
     expires_at = time.time() + 120  # Token stays valid for 2 minutes (120 seconds)
 
     # 2️⃣ Identify request context
@@ -672,23 +672,26 @@ def handle_qr_token():
         if not student_id:
             return jsonify({"status": "error", "message": "Missing student_id for secure registration"}), 400
 
-        # Save token with a strict cryptographic lock tied to this specific student profile
-        qr_tokens[token] = {
-            "expires_at": expires_at,
-            "student_id": str(student_id)
-        }
+        with token_lock:
+            # Save token into the globally visible active_qr_tokens tracking map
+            active_qr_tokens[token] = {
+                "expires_at": expires_at,
+                "student_id": str(student_id)
+            }
         
         return jsonify({"status": "success", "token": token}), 200
 
     else:
         # --- ANONYMOUS QUICK LOGIN METHOD (From StudentLogin) ---
         # Save token with NO student binding (open context scanning)
-        qr_tokens[token] = {
-            "expires_at": expires_at,
-            "student_id": None
-        }
+        with token_lock:
+            active_qr_tokens[token] = {
+                "expires_at": expires_at,
+                "student_id": None
+            }
         
         return jsonify({"status": "success", "token": token}), 200
+
 
 @app.route("/qr-login", methods=["POST"])
 def qr_login():
@@ -699,6 +702,8 @@ def qr_login():
     if not token or not scanning_student_id:
         return jsonify({"message": "Missing token or student_id"}), 400
 
+    current_time = time.time()
+
     with token_lock:
         token_data = active_qr_tokens.get(token)
         
@@ -706,18 +711,18 @@ def qr_login():
         if not token_data:
             return jsonify({"message": "Invalid or expired token"}), 404
             
-        # 2. Check if token time has run out
-        if now_pht() > token_data["expires_at"]:
+        # 2. Check if token time has run out (both now use uniform Unix timestamps)
+        if current_time > token_data["expires_at"]:
             del active_qr_tokens[token]
             return jsonify({"message": "Token expired"}), 410
 
-        # 3. ANTI-STEALING SHIELD: Verify scanner matches the web session owner
-        if token_data["owner_id"] != str(scanning_student_id):
+        # 3. ANTI-STEALING SHIELD: Verify scanner matches if it's an identity-locked check-in token
+        if token_data["student_id"] is not None and token_data["student_id"] != str(scanning_student_id):
             return jsonify({
                 "message": "Security Error: This QR code belongs to another account!"
-            }), 403 # ◄ Rejects malicious or accidental cross-scans immediately
+            }), 403 
 
-    # If it passes security, fetch student to authorize web socket push
+    # If it passes security validation, fetch student data to authorize web socket push
     student = Student.query.filter_by(student_id=scanning_student_id).first()
     if not student:
         return jsonify({"message": "Student not found"}), 404
@@ -732,13 +737,13 @@ def qr_login():
         room=token
     )
 
-    # 4. Burn the token instantly so it can never be processed a second time
+    # 4. Burn the token instantly so it can never be intercepted or replayed
     with token_lock:
         if token in active_qr_tokens:
             del active_qr_tokens[token]
 
     return jsonify({"message": "QR validation successful"}), 200
-
+    
 if __name__ == "__main__":
     socketio.run(
         app,
