@@ -4,6 +4,8 @@ from flask_cors import CORS
 from flask_mail import Mail, Message 
 from datetime import datetime, timedelta, timezone
 import qrcode
+import secrets
+import time
 import os
 import io
 import pandas as pd
@@ -655,27 +657,38 @@ token_lock = Lock()
 active_qr_tokens = {}
 token_lock = Lock()
 
-@app.route("/qr-token", methods=["POST"]) # ◄ Changed to POST to accept data safely
-def qr_token():
-    data = request.json or {}
-    student_id = data.get("student_id") # ◄ Track who owns this screen
+@app.route('/qr-token', methods=['GET', 'POST'])
+def handle_qr_token():
+    # 1️⃣ Generate a secure random token string
+    token = secrets.token_hex(16)
+    expires_at = time.time() + 120  # Token stays valid for 2 minutes (120 seconds)
 
-    if not student_id:
-        return jsonify({"message": "Student ID is required to secure the token"}), 400
+    # 2️⃣ Identify request context
+    if request.method == 'POST':
+        # --- SECURE CHECK-IN METHOD (From StudentDashboard) ---
+        data = request.get_json() or {}
+        student_id = data.get('student_id')
 
-    token = str(uuid.uuid4())
-    expires_at = now_pht() + timedelta(minutes=2)
-    
-    with token_lock:
-        active_qr_tokens[token] = {
+        if not student_id:
+            return jsonify({"status": "error", "message": "Missing student_id for secure registration"}), 400
+
+        # Save token with a strict cryptographic lock tied to this specific student profile
+        qr_tokens[token] = {
             "expires_at": expires_at,
-            "owner_id": str(student_id) # ◄ Explicitly lock the token to this user
+            "student_id": str(student_id)
         }
         
-    return jsonify({
-        "token": token,
-        "expires_at": expires_at.isoformat()
-    }), 200
+        return jsonify({"status": "success", "token": token}), 200
+
+    else:
+        # --- ANONYMOUS QUICK LOGIN METHOD (From StudentLogin) ---
+        # Save token with NO student binding (open context scanning)
+        qr_tokens[token] = {
+            "expires_at": expires_at,
+            "student_id": None
+        }
+        
+        return jsonify({"status": "success", "token": token}), 200
 
 @app.route("/qr-login", methods=["POST"])
 def qr_login():
