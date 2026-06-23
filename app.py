@@ -660,7 +660,7 @@ def export_attendance():
             
             data.append({
                 "Name": student_obj.name if student_obj else "Unknown Student",
-                "Student ID": student_obj.student_id if student_obj else "N/A",
+                "Student LRN": student_obj.student_id if student_obj else "N/A",
                 "PC Name": pc_obj.pc_name if pc_obj else "Unknown PC",
                 "Time In": r.checked_in_at.strftime("%Y-%m-%d %I:%M:%S") if r.checked_in_at else "N/A",
                 "Time Out": r.checked_out_at.strftime("%Y-%m-%d %I:%M:%S") if r.checked_out_at else "",
