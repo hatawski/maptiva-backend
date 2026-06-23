@@ -244,7 +244,7 @@ def signup():
 
     existing_student = Student.query.filter_by(student_id=data["student_id"]).first()
     if existing_student:
-        return jsonify({"message": "Student ID already exists"}), 400
+        return jsonify({"message": "Student LRN already exists"}), 400
 
     existing_email = Student.query.filter_by(email=data["email"]).first()
     if existing_email:
