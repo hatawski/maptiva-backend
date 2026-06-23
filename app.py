@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 import qrcode
 import os
 import io
-import shutil  # ◄ Added for automated file-level database backups
 import pandas as pd
 from pathlib import Path
 import uuid
@@ -143,43 +142,8 @@ def cleanup_stale_sessions():
         print(f"🔄 Cleaned up stale session: {pc.pc_name}")
     db.session.commit()
 
-# === 🛡️ DATABASE BACKUP CORE SYSTEM ===
-def execute_database_backup():
-    """Generates a timestamped, redundant file-level snapshot of the SQLite database layer"""
-    try:
-        # Extract the path from the SQLite URI string format
-        db_uri = app.config['SQLALCHEMY_DATABASE_URI']
-        if "sqlite:///" in db_uri:
-            source_db = db_uri.replace("sqlite:///", "")
-        else:
-            source_db = os.path.join(BASE_DIR, "database.db")
-
-        backup_dir = os.path.join(BASE_DIR, "backups")
-        
-        # Build backup infrastructure folder if omitted
-        if not os.path.exists(backup_dir):
-            os.makedirs(backup_dir)
-            
-        if os.path.exists(source_db):
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-            backup_filename = f"backup_{timestamp}.db"
-            destination = os.path.join(backup_dir, backup_filename)
-            
-            # Execute snapshot cloning routine
-            shutil.copy2(source_db, destination)
-            print("\n" + "="*52)
-            print(f"🛡️  DATABASE COMPLIANCE BACKUP CREATED:\n    📍 {destination}")
-            print("="*52 + "\n")
-        else:
-            print(f"⚠️  Backup deferred: Source '{source_db}' is not built yet.")
-    except Exception as e:
-        print(f"❌ Critical Error during database transaction backup: {e}")
-
 # === INITIALIZATION ===
 with app.app_context():
-    # 1. Execute redundancy snapshot before mutating any structural schemas
-    execute_database_backup()
-    
     db.create_all()
     cleanup_stale_sessions()  # ✅ clean up on restart
     if not Admin.query.filter_by(username="admin").first():
