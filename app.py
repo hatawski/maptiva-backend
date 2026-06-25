@@ -649,39 +649,93 @@ def admin_view_attendance():
 @app.route('/admin/export-attendance', methods=['GET'])
 def export_attendance():
     try:
+        # 📥 Read the timeline parameters passed by the React frontend
+        date_filter = request.args.get('date', 'All')       # Expects "All" or "YYYY-MM-DD"
+        time_from = request.args.get('time_from', '00:00')   # Expects "HH:MM"
+        time_to = request.args.get('time_to', '23:59')       # Expects "HH:MM"
+        status_filter = request.args.get('status', 'All')   # Expects "All", "checked_out", or "force_checked_out"
+
         records = Reservation.query.all()
         if not records:
-            return jsonify({"message": "No records found"}), 400
+            return jsonify({"message": "No data available to export"}), 400
 
-        data = []
+        # Helper logic to convert "HH:MM" strings into numbers for quick comparisons
+        def get_minutes(t_str):
+            try:
+                parts = t_str.split(':')
+                return int(parts[0]) * 60 + int(parts[1])
+            except:
+                return 0
+
+        f_min_start = get_minutes(time_from)
+        f_min_end = get_minutes(time_to)
+
+        filtered_rows = []
         for r in records:
+            # Skip rows that don't even have a check-in time
+            if not r.checked_in_at:
+                continue
+
+            # Extract date and time strings from the DB record
+            log_date_str = r.checked_in_at.strftime("%Y-%m-%d")
+            log_time_str = r.checked_in_at.strftime("%H:%M")
+            r_status = r.status if r.status else "confirmed"
+
+            # 🛑 Validation Step 1: Check Date Match
+            if date_filter != 'All' and log_date_str != date_filter:
+                continue
+
+            # 🛑 Validation Step 2: Check Status Match
+            if status_filter != 'All' and r_status != status_filter:
+                continue
+
+            # 🛑 Validation Step 3: Check Time Window Match
+            log_min = get_minutes(log_time_str)
+            if not (f_min_start <= log_min <= f_min_end):
+                continue
+
+            # Fetch associated Student and PC details safely
             student_obj = Student.query.get(r.student_id)
             pc_obj = PC.query.get(r.pc_id)
-            
-            data.append({
+
+            filtered_rows.append({
                 "Name": student_obj.name if student_obj else "Unknown Student",
                 "Student LRN": student_obj.student_id if student_obj else "N/A",
                 "PC Name": pc_obj.pc_name if pc_obj else "Unknown PC",
-                "Time In": r.checked_in_at.strftime("%Y-%m-%d %I:%M:%S") if r.checked_in_at else "N/A",
-                "Time Out": r.checked_out_at.strftime("%Y-%m-%d %I:%M:%S") if r.checked_out_at else "",
-                "Status": r.status
+                "Time In": r.checked_in_at.strftime("%Y-%m-%d %I:%M:%S %p"),
+                "Time Out": r.checked_out_at.strftime("%Y-%m-%d %I:%M:%S %p") if r.checked_out_at else "",
+                "Status": r_status.replace('_', ' ').upper()
             })
 
-        df = pd.DataFrame(data)
+        # If everything got filtered out, let the user know cleanly
+        if not filtered_rows:
+            return jsonify({"message": "No timeline intersections found for active settings"}), 400
+
+        # 📊 Convert filtered rows to DataFrame and write to Excel
+        df = pd.DataFrame(filtered_rows)
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Attendance Logs')
-        output.seek(0)
+            df.to_excel(writer, index=False, sheet_name='Timeline Log Archive')
+            
+            ws = writer.sheets['Timeline Log Archive']
+            ws.freeze_panes = 'A2' # Lock header row
+            
+            # Auto-adjust column widths dynamically so nothing gets squished or cut off
+            for col in ws.columns:
+                max_len = max(len(str(cell.value or '')) for cell in col)
+                ws.column_dimensions[col[0].column_letter].width = max(max_len + 3, 12)
 
+        output.seek(0)
         return send_file(
             output,
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", # ◄ Corrected MIME type (no hyphen)
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             as_attachment=True,
-            download_name="Attendance.xlsx"
+            download_name=f"Timeline_Attendance_{date_filter}.xlsx"
         )
+        
     except Exception as e:
-        print(f"Export Error Traceback: {e}")
-        return jsonify({"message": "Server error generating file"}), 500
+        print(f"Excel Generation failure error trace: {e}")
+        return jsonify({"message": "Internal data synthesis malfunction"}), 500
 
 # === QR TOKEN MANAGEMENT ===
 active_qr_tokens = {}
