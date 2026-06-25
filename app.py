@@ -631,14 +631,19 @@ def admin_view_attendance():
         for r in records:
             student_obj = Student.query.get(r.student_id)
             pc_obj = PC.query.get(r.pc_id)
+   
+            # ✅ FIX: Send the full raw string format so React filters can read the date and time perfectly
+            # This yields a safe computer-readable string standard: "YYYY-MM-DD HH:MM:SS"
+            raw_time_in = r.checked_in_at.strftime("%Y-%m-%d %H:%M:%S") if r.checked_in_at else None
+            raw_time_out = r.checked_out_at.strftime("%Y-%m-%d %H:%M:%S") if r.checked_out_at else None
             
             data.append({
                 "id": r.id,
                 "name": student_obj.name if student_obj else "Unknown Student",
                 "student_id": student_obj.student_id if student_obj else "N/A",
                 "pc_name": pc_obj.pc_name if pc_obj else "Unknown PC",
-                "time_in": r.checked_in_at.strftime("%I:%M %p") if r.checked_in_at else "N/A",
-                "time_out": r.checked_out_at.strftime("%I:%M %p") if r.checked_out_at else "Still Active",
+                "time_in": raw_time_in if raw_time_in else "N/A",
+                "time_out": raw_time_out if raw_time_out else "Still Active",
                 "status": r.status
             })
         return jsonify(data), 200
